@@ -22,8 +22,12 @@ namespace CDL1 {
       std::vector<double> reference;
       std::vector<double> ATreference;
       std::vector<double> thresholds;
+      std::vector<double> thresholds2;
+      std::vector<size_t> t_last_update;
+      size_t t;
       int update_threshold_next;
       int update_threshold;
+      int sparsity_x;
       Timer timer;
       double update_reference_time;
       double time_reference_last_updated;
@@ -34,7 +38,6 @@ namespace CDL1 {
       double update_reference(double lambda);
       bool should_update_reference();
       void update_coordinate(int j, double lambda);
-      double compute_primal_obj(double lambda);
 
     public:
 
@@ -47,6 +50,7 @@ namespace CDL1 {
         double *obj,
         const char* log_dir);
 
+      double compute_primal_obj(double lambda);
 
 
   };

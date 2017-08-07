@@ -1,5 +1,6 @@
 #include "solver.h"
 #include "timer.h"
+#include "one_minus_cdf_sqrt.h"
 
 #include <cstring>
 #include <vector>
@@ -57,9 +58,13 @@ void Solver::solve(
   double last_obj = obj;
 
   thresholds.assign(d, 0.);
+  thresholds2.assign(d, 0.);
   reference = residuals;
   reference_dist_sq = 0.;
   ATreference.assign(d, 0.);
+  t_last_update.assign(d, 0);
+  t = 0;
+  sparsity_x = 0;
   bool ignore_thresholds = true;
 
   // CD optimization loop:
@@ -74,7 +79,21 @@ void Solver::solve(
     for (int j = 0; j < d; ++j) {
       if (!ignore_thresholds && x[j] == 0.) {
         if (thresholds[j] >= reference_dist_sq) {
+          // Normal skipped update:
           continue;
+        }
+        if (reference_dist_sq > 0.) {
+          double p1 = one_minus_norm_cdf_sqrt_x_vals(thresholds[j] / reference_dist_sq * (n-1));
+          double p2 = one_minus_norm_cdf_sqrt_x_vals(thresholds2[j] / reference_dist_sq * (n-1));
+          double p = p1 + p2;
+          if (p > 1.0) {
+            // This can happen because of the way we approximate the probabilities
+            p = 1.0;
+          }
+          double D_j = t - t_last_update[j];
+          if (p * D_j < sparsity_x) {
+            continue;
+          }
         }
       }
       update_coordinate(j, lambda);
@@ -138,12 +157,21 @@ void Solver::update_coordinate(int j, double lambda) {
     return;
   }
 
+  ++t;
+  t_last_update[j] = t;
+
   double grad = ip(residuals, col);
   double pre_shrink = x[j] - grad * inv_hess;
   double new_value = soft_threshold(pre_shrink, lambda * inv_hess);
   double delta = new_value - x[j];
   if (delta == 0.0) {
     return;
+  }
+
+  if (x[j] == 0.) {
+    ++sparsity_x; 
+  } else if (new_value == 0.) {
+    --sparsity_x;  
   }
 
   for (size_t ind = 0; ind < col.indices.size(); ind++) {
@@ -171,10 +199,14 @@ double Solver::update_reference(double lambda) {
   for (size_t j = 0; j < p.A_cols.size(); ++j) {
     ATreference[j] = ip(reference, p.A_cols[j]);
 
-    double diff = lambda - fabs(ATreference[j]);
+    double diff = lambda - ATreference[j];
     double thresh = sign(diff) * sq(diff) * p.A_cols[j].inv_norm_sq;
 
-    thresholds[j] = thresh;
+    double diff2 = lambda + ATreference[j];
+    double thresh2 = sign(diff2) * sq(diff2) * p.A_cols[j].inv_norm_sq;
+
+    thresholds[j] = min(thresh, thresh2);
+    thresholds2[j] = max(thresh, thresh2);
   }
   return update_timer.elapsed_time();
 }
