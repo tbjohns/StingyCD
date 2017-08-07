@@ -39,18 +39,23 @@ void Solver::solve(
   logger.throttle_logging_with_interval(p.max_time / 50);
 
   // Problem is n examples by d features:
-  int d = p.A_cols.size();
-  int n = p.b.size();
+  d = p.A_cols.size();
+  n = p.b.size();
 
   // Initialize weight vector:
   x.assign(d, 0);
+
+  // Screening variables:
+  is_screened.assign(d, false);
+  ATresiduals.resize(d);
+  int screening_interval = 10;
 
   // Initialize residuals vector:
   residuals.resize(n);
   copy_and_scale(p.b, residuals, -1.0);
 
   // Initialize objective value:
-  double obj = compute_primal_obj(lambda);
+  obj = compute_primal_obj(lambda);
 
   // Additional convergence variables:
   itr = 0;
@@ -58,8 +63,14 @@ void Solver::solve(
 
   // CD optimization loop:
   while (++itr) {
+    if (itr % screening_interval == 0) {
+      perform_screening(lambda);
+    }
+
     for (int j = 0; j < d; ++j) {
-      update_coordinate(j, lambda);
+      if (!is_screened[j]) {
+        update_coordinate(j, lambda);
+      }
     }
 
     if (itr % 5 == 1) {
@@ -94,7 +105,9 @@ void Solver::solve(
       timer.continue_timing();
 
       if (converged) {
-        std::cout << "converged" << std::endl;
+        if (p.verbose) {
+          std::cout << "converged" << std::endl;
+        }
         break;
       }
     }
@@ -133,6 +146,54 @@ void Solver::update_coordinate(int j, double lambda) {
   }
   x[j] = new_value;
 
+}
+
+void Solver::perform_screening(double lambda) {
+  int d = p.A_cols.size();
+  double mx = 0.;
+  for (int j = 0; j < d; ++j) {
+    if (is_screened[j]) {
+      continue;
+    } 
+    ATresiduals[j] = std::fabs(ip(residuals, p.A_cols[j]));
+    if (ATresiduals[j] > mx) {
+      mx = ATresiduals[j];
+    }
+  }
+
+  double alpha = lambda / mx;
+  if (alpha > 1.0) {
+    alpha = 1.0;
+  }
+
+  // dual obj is 0.5 ||b||^2 - 0.5 * || b + alpha * residuals||^2
+  double residuals_sq = l2_sq(residuals);
+  double dual_obj = -alpha * (ip(residuals, p.b) + 0.5 * residuals_sq * alpha);
+  obj = compute_primal_obj(lambda);
+  double thresh = obj - dual_obj - 0.25 * sq(1 - alpha) * residuals_sq;
+
+  double alpha2 = (1 + alpha) / 2;
+  for (int j = 0; j < d; ++j) {
+    if (is_screened[j]) {
+      continue;
+    }
+    if (x[j] != 0.) {
+      continue;
+    }
+    double val = lambda - alpha2 * ATresiduals[j];
+    if (val < 0) {
+      continue;
+    }
+    if (sq(val) * p.A_cols[j].inv_norm_sq > thresh) {
+      is_screened[j] = true;
+    }
+  }
+    
+  if (p.verbose) {
+    cout << "Screning thresh is " << thresh << endl;
+    cout << "lambda is " << lambda << endl;
+    cout << "alpha is " << alpha << endl;
+  }
 }
 
 } // namespace CDL1
