@@ -39,38 +39,45 @@ void Solver::solve(
   logger.throttle_logging_with_interval(p.max_time / 50);
 
   // Problem is n examples by d features:
-  d = p.A_cols.size();
-  n = p.b.size();
+  int d = p.A_cols.size();
+  int n = p.b.size();
 
   // Initialize weight vector:
   x.assign(d, 0);
-
-  // Screening variables:
-  is_screened.assign(d, false);
-  ATresiduals.resize(d);
-  int screening_interval = 10;
 
   // Initialize residuals vector:
   residuals.resize(n);
   copy_and_scale(p.b, residuals, -1.0);
 
   // Initialize objective value:
-  obj = compute_primal_obj(lambda);
+  double obj = compute_primal_obj(lambda);
 
   // Additional convergence variables:
   itr = 0;
   double last_obj = obj;
 
+  thresholds.assign(d, 0.);
+  reference = residuals;
+  reference_dist_sq = 0.;
+  ATreference.assign(d, 0.);
+  bool ignore_thresholds = true;
+
   // CD optimization loop:
   while (++itr) {
-    if (itr % screening_interval == 0) {
-      perform_screening(lambda);
+    if (should_update_reference()) {
+      update_reference_time = update_reference(lambda);
+      time_reference_last_updated = timer.elapsed_time();
+      ignore_thresholds = false;
     }
 
+    // Update coordinates:
     for (int j = 0; j < d; ++j) {
-      if (!is_screened[j]) {
-        update_coordinate(j, lambda);
+      if (!ignore_thresholds && x[j] == 0.) {
+        if (thresholds[j] >= reference_dist_sq) {
+          continue;
+        }
       }
+      update_coordinate(j, lambda);
     }
 
     if (itr % 5 == 1) {
@@ -105,9 +112,7 @@ void Solver::solve(
       timer.continue_timing();
 
       if (converged) {
-        if (p.verbose) {
-          std::cout << "converged" << std::endl;
-        }
+        std::cout << "converged" << std::endl;
         break;
       }
     }
@@ -146,54 +151,32 @@ void Solver::update_coordinate(int j, double lambda) {
   }
   x[j] = new_value;
 
+  reference_dist_sq += delta * (2 * (grad - ATreference[j]) + delta / inv_hess);
 }
 
-void Solver::perform_screening(double lambda) {
-  int d = p.A_cols.size();
-  double mx = 0.;
-  for (int j = 0; j < d; ++j) {
-    if (is_screened[j]) {
-      continue;
-    } 
-    ATresiduals[j] = std::fabs(ip(residuals, p.A_cols[j]));
-    if (ATresiduals[j] > mx) {
-      mx = ATresiduals[j];
-    }
+bool Solver::should_update_reference() {
+  if (itr == 3) 
+    return true;
+  double time_diff = timer.elapsed_time() - time_reference_last_updated;
+  if (time_diff > 5 * update_reference_time) {
+    return true;
   }
+  return false;
+}
 
-  double alpha = lambda / mx;
-  if (alpha > 1.0) {
-    alpha = 1.0;
-  }
+double Solver::update_reference(double lambda) {
+  Timer update_timer;
+  reference_dist_sq = 0.;
+  reference = residuals;
+  for (size_t j = 0; j < p.A_cols.size(); ++j) {
+    ATreference[j] = ip(reference, p.A_cols[j]);
 
-  // dual obj is 0.5 ||b||^2 - 0.5 * || b + alpha * residuals||^2
-  double residuals_sq = l2_sq(residuals);
-  double dual_obj = -alpha * (ip(residuals, p.b) + 0.5 * residuals_sq * alpha);
-  obj = compute_primal_obj(lambda);
-  double thresh = obj - dual_obj - 0.25 * sq(1 - alpha) * residuals_sq;
+    double diff = lambda - fabs(ATreference[j]);
+    double thresh = sign(diff) * sq(diff) * p.A_cols[j].inv_norm_sq;
 
-  double alpha2 = (1 + alpha) / 2;
-  for (int j = 0; j < d; ++j) {
-    if (is_screened[j]) {
-      continue;
-    }
-    if (x[j] != 0.) {
-      continue;
-    }
-    double val = lambda - alpha2 * ATresiduals[j];
-    if (val < 0) {
-      continue;
-    }
-    if (sq(val) * p.A_cols[j].inv_norm_sq > thresh) {
-      is_screened[j] = true;
-    }
+    thresholds[j] = thresh;
   }
-    
-  if (p.verbose) {
-    cout << "Screning thresh is " << thresh << endl;
-    cout << "lambda is " << lambda << endl;
-    cout << "alpha is " << alpha << endl;
-  }
+  return update_timer.elapsed_time();
 }
 
 } // namespace CDL1

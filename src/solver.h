@@ -18,19 +18,23 @@ namespace CDL1 {
 
       std::vector<double> residuals;
       std::vector<double> x;
-      std::vector<bool> is_screened;
-      std::vector<double> ATresiduals;
 
-      double obj;
-      int n, d;
-
+      std::vector<double> reference;
+      std::vector<double> ATreference;
+      std::vector<double> thresholds;
+      int update_threshold_next;
+      int update_threshold;
       Timer timer;
+      double update_reference_time;
+      double time_reference_last_updated;
+      double reference_dist_sq;
       double obj_last_epoch;
       int itr;
 
+      double update_reference(double lambda);
+      bool should_update_reference();
       void update_coordinate(int j, double lambda);
       double compute_primal_obj(double lambda);
-      void perform_screening(double lambda);
 
     public:
 
