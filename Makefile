@@ -1,19 +1,19 @@
-CPP_FILES = $(wildcard src/*.cpp) $(wildcard src/*/*.cpp)
-OBJ_FILES = $(patsubst src/%.cpp,obj/%.o,$(CPP_FILES))
+CPP_FILES = $(wildcard stingycd/src/*.cpp) $(wildcard stingycd/src/*/*.cpp)
+OBJ_FILES = $(patsubst stingycd/src/%.cpp,stingycd/obj/%.o,$(CPP_FILES))
 
-FLAGS = -Wall -O3 
+FLAGS = -Wall -O3
 
 all: $(OBJ_FILES)
-	$(CXX) $(FLAGS) -shared -o cd.so $^
+	$(CXX) $(FLAGS) -shared -o stingycd/cd.so $^
 
-obj/%.o: src/%.cpp
+stingycd/obj/%.o: stingycd/src/%.cpp
 	$(CXX) $(FLAGS) -fPIC -c -o $@ $<
 
-$(OBJ_FILES): | obj
+$(OBJ_FILES): | stingycd/obj
 
-obj:
-	mkdir -p obj
+stingycd/obj:
+	mkdir -p stingycd/obj
 
 clean:
-	rm -rf obj
-	rm cd.so
+	rm -rf stingycd/obj
+	rm stingycd/cd.so
