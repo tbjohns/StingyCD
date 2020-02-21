@@ -5,7 +5,7 @@ import _ctypes
 from scipy import sparse
 
 current_dir = os.path.abspath(os.path.dirname(__file__))
-lib = np.ctypeslib.load_library("cd.so", current_dir)
+lib = np.ctypeslib.load_library("cd", current_dir)
 
 lib.CD_new.restype = ctypes.POINTER(ctypes.c_void_p)
 lib.CD_set_A_dense.restype = None

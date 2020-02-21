@@ -1,3 +1,6 @@
 obj
 *.so
 *.pyc
+*.o
+
+stingycd.egg-info/*
